@@ -49,7 +49,7 @@ class CrawlerEngine:
         self.last_layer = 0
         self.escalation_history: list[dict] = []
 
-    async def crawl(self, url: str, callback=None) -> CrawlResult:
+    async def crawl(self, url: str, callback=None, paginated: bool = False) -> CrawlResult:
         """Crawl URL, escalating through layers until valid content is obtained."""
 
         if callback:
@@ -63,9 +63,9 @@ class CrawlerEngine:
                 callback("layer_attempt", {"layer": layer.layer, "name": layer.name})
 
             if _NEED_PROACTOR and isinstance(layer, (StealthCrawler, UndetectedCrawler)):
-                result = _run_in_proactor(layer.crawl(url))
+                result = _run_in_proactor(layer.crawl(url, paginated=paginated))
             else:
-                result = await layer.crawl(url)
+                result = await layer.crawl(url, paginated=paginated)
 
             if not result.success:
                 log.warning(f"Layer {layer.layer} ({layer.name}) failed: {result.error}")

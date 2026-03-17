@@ -37,6 +37,11 @@ class Settings:
     RATE_LIMIT_MAX: float = 20.0
     RATE_LIMIT_DECAY: float = 0.5  # decrease on success
 
+    # Crawler timing
+    CRAWL_DELAY_NORMAL: float = 3.0       # seconds, non-paginated pages
+    CRAWL_DELAY_PAGINATED: float = 6.0    # seconds, paginated/AJAX pages
+    CRAWL_PAGE_TIMEOUT: int = 60000       # ms, max wait for page load
+
     # ScraperAPI
     SCRAPERAPI_MIN_CREDITS: int = 50  # skip layer 3 if below
 

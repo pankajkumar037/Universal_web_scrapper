@@ -13,6 +13,7 @@ class CrawlResult:
     error: str = ""
     word_count: int = 0
     metadata: dict = field(default_factory=dict)
+    links: dict = field(default_factory=dict)
 
     def __post_init__(self):
         if self.markdown:
@@ -26,5 +27,5 @@ class CrawlerStrategy(ABC):
     name: str = "base"
 
     @abstractmethod
-    async def crawl(self, url: str) -> CrawlResult:
+    async def crawl(self, url: str, paginated: bool = False) -> CrawlResult:
         ...

@@ -24,10 +24,11 @@ from crawler.engine import CrawlerEngine
 from extraction.extractor import extract_records, deduplicate_records
 from extraction.prompt_refiner import refine_prompt
 from extraction.schema_builder import build_dynamic_model
-from models import RefinedSchema
+from models import RefinedSchema, PaginationResult
 from pagination.heuristic import detect_pagination
 from pagination.ai_fallback import ai_detect_pagination
 from utils.logger import get_logger
+from utils.fingerprint import content_fingerprint
 
 log = get_logger("crew")
 
@@ -283,7 +284,7 @@ def run_crawl_and_plan(
     _cb("crawl_start", {"url": url})
     engine = CrawlerEngine()
     try:
-        crawl_result = asyncio.run(engine.crawl(url, callback=callback))
+        crawl_result = asyncio.run(engine.crawl(url, callback=callback, paginated=(num_pages > 1)))
     except Exception as e:
         log.error(f"Crawl raised exception: {e}")
         raise RuntimeError(f"Crawl failed: {e}") from e
@@ -324,7 +325,7 @@ def run_crawl_and_plan(
 
         # Still need pagination
         try:
-            pagination_result = detect_pagination(url, num_pages, markdown=markdown)
+            pagination_result = detect_pagination(url, num_pages, markdown=markdown, links=crawl_result.links)
         except Exception as e:
             log.warning(f"Pagination detection failed: {e}")
             plan_errors.append(f"pagination: {e}")
@@ -337,7 +338,7 @@ def run_crawl_and_plan(
                 refine_prompt, description, sample_content=markdown
             )
             pagination_future = pool.submit(
-                detect_pagination, url, num_pages, markdown=markdown
+                detect_pagination, url, num_pages, markdown=markdown, links=crawl_result.links
             )
 
             try:
@@ -363,8 +364,13 @@ def run_crawl_and_plan(
             ai_pag = ai_detect_pagination(url, markdown, num_pages)
             if len(ai_pag.urls) > 1:
                 pagination_result = ai_pag
+            else:
+                # AI found no real pagination — downgrade to single page
+                log.info("AI found no pagination; downgrading speculative to single page")
+                pagination_result = PaginationResult(urls=[url], pattern="single (ai_verified)", method="ai_fallback")
         except Exception as e:
-            log.warning(f"AI pagination fallback failed: {e}")
+            log.warning(f"AI pagination fallback failed: {e}; downgrading to single page")
+            pagination_result = PaginationResult(urls=[url], pattern="single (ai_error)", method="ai_fallback")
 
     page_urls = pagination_result.urls if pagination_result else [url]
     telemetry["pagination_method"] = pagination_result.method if pagination_result else "none"
@@ -395,7 +401,7 @@ def run_extract_and_validate(
     num_pages: int = 1,
     callback=None,
 ) -> dict:
-    """Phase 3-6: Extract + validate + multi-page + dedup.
+    """Phase 3-5: Extract all pages in parallel + validate + dedup.
 
     Takes the dict returned by run_crawl_and_plan().
     Returns dict with: records, schema, crawl_info, telemetry
@@ -416,30 +422,188 @@ def run_extract_and_validate(
     record_model = build_dynamic_model(schema)
     schema_json = schema.model_dump_json()
 
-    # ── Phase 3: Extract ────────────────────────────────────────────
+    # Capture Streamlit context for thread propagation
+    _st_ctx = get_script_run_ctx() if get_script_run_ctx else None
+
+    # Pagination fallback — only if Phase 2 didn't already verify as single page
+    pagination_result = plan_result.get("pagination_result")
+    if num_pages > 1 and len(page_urls) <= 1:
+        # Skip re-detection if AI already verified this is a single page
+        already_verified = (
+            pagination_result
+            and ("ai_verified" in pagination_result.pattern
+                 or "ai_error" in pagination_result.pattern)
+        )
+        if not already_verified:
+            try:
+                fallback_pag = detect_pagination(url, num_pages)
+                page_urls = fallback_pag.urls
+            except Exception:
+                pass
+
+    # ── Helper closures ────────────────────────────────────────────
+
+    def _ctx_wrap(fn, *args):
+        """Propagate Streamlit context into worker threads, then call *fn*."""
+        if _st_ctx is not None and add_script_run_ctx is not None:
+            add_script_run_ctx(threading.current_thread(), _st_ctx)
+        return fn(*args)
+
+    def _extract_only(page_num, page_markdown):
+        """Extract records from an already-crawled page (page 1)."""
+        _cb("processing_page", {
+            "page": page_num,
+            "total": len(page_urls),
+            "url": url,
+        })
+        try:
+            recs = extract_records(
+                page_markdown, record_model,
+                schema.record_description, schema=schema,
+            )
+        except Exception as e:
+            log.warning(f"Page {page_num} extraction error: {e}")
+            recs = []
+
+        if run_dir:
+            _save_json(run_dir, f"page_{page_num}", recs)
+        log.info(f"[Page {page_num}/{len(page_urls)}] Extracted {len(recs)} records")
+        _cb("page_extracted", {
+            "page": page_num,
+            "records": len(recs),
+            "words": len(page_markdown.split()),
+            "chars": len(page_markdown),
+        })
+        return page_num, recs, page_markdown
+
+    def _crawl_and_extract(page_num, page_url):
+        """Crawl a page then extract records (pages 2-N)."""
+        log.info(f"[Page {page_num}/{len(page_urls)}] Crawling: {page_url}")
+        _cb("processing_page", {
+            "page": page_num,
+            "total": len(page_urls),
+            "url": page_url,
+        })
+        try:
+            page_engine = CrawlerEngine()
+            page_crawl = asyncio.run(page_engine.crawl(page_url, callback=callback, paginated=True))
+        except Exception as e:
+            log.warning(f"Page {page_num} crawl error: {e}")
+            _cb("page_failed", {"page": page_num, "error": str(e)})
+            return page_num, [], ""
+
+        if not page_crawl.success:
+            _cb("page_failed", {"page": page_num, "error": page_crawl.error})
+            return page_num, [], ""
+
+        _append_page_to_file(txt_path, page_num, page_crawl.markdown)
+        if run_dir:
+            _save_page_txt(run_dir, page_num, page_crawl.markdown)
+        log.info(f"[Page {page_num}/{len(page_urls)}] Crawled {page_crawl.word_count} words ({len(page_crawl.markdown)} chars)")
+        crawl_info.append({
+            "url": page_url,
+            "layer": page_crawl.layer,
+            "words": page_crawl.word_count,
+            "page": page_num,
+        })
+
+        try:
+            recs = extract_records(
+                page_crawl.markdown, record_model,
+                schema.record_description, schema=schema,
+            )
+        except Exception as e:
+            log.warning(f"Page {page_num} extraction error: {e}")
+            recs = []
+
+        if run_dir:
+            _save_json(run_dir, f"page_{page_num}", recs)
+        log.info(f"[Page {page_num}/{len(page_urls)}] Extracted {len(recs)} records")
+        _cb("page_extracted", {
+            "page": page_num,
+            "records": len(recs),
+            "words": page_crawl.word_count,
+            "chars": len(page_crawl.markdown),
+        })
+        return page_num, recs, page_crawl.markdown
+
+    # ── Phase 3: Extract ALL pages ─────────────────────────────────
     t2 = time.time()
     _cb("extraction_start")
-    try:
-        records = extract_records(
-            markdown, record_model, schema.record_description,
-            callback=callback, schema=schema,
-        )
-        content_len = len(markdown)
-        telemetry["extraction_strategy"] = "chunked" if content_len > 100_000 else "batch"
-    except Exception as e:
-        log.error(f"Extraction failed: {e}")
+
+    page_markdowns = []
+
+    if len(page_urls) <= 1:
+        # --- Single-page: extract synchronously with callback ---
+        try:
+            records = extract_records(
+                markdown, record_model, schema.record_description,
+                callback=callback, schema=schema,
+            )
+            content_len = len(markdown)
+            telemetry["extraction_strategy"] = "chunked" if content_len > 100_000 else "batch"
+        except Exception as e:
+            log.error(f"Extraction failed: {e}")
+            records = []
+            telemetry["extraction_strategy"] = "failed"
+
+        page_markdowns.append((1, markdown))
+        if run_dir:
+            _save_json(run_dir, "page_1", records)
+    else:
+        # --- Multi-page: extract ALL pages in parallel ---
+        _cb("multi_page_start", {"num_pages": num_pages})
+        remaining_urls = page_urls[1:]
+
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            futures = []
+            # Page 1: already crawled — extract only
+            futures.append(
+                pool.submit(_ctx_wrap, _extract_only, 1, markdown)
+            )
+            # Pages 2-N: crawl then extract
+            for i, purl in enumerate(remaining_urls, start=2):
+                futures.append(
+                    pool.submit(_ctx_wrap, _crawl_and_extract, i, purl)
+                )
+
+            page_results = []
+            for future in as_completed(futures):
+                try:
+                    page_results.append(future.result())
+                except Exception as e:
+                    log.warning(f"Page processing failed: {e!r}")
+
+        page_results.sort(key=lambda x: x[0])
+
+        # Detect duplicate page content (same page served for different URLs)
+        # Uses fuzzy fingerprint so pages differing only in timestamps/ads are caught
+        seen_fingerprints = set()
         records = []
-        telemetry["extraction_strategy"] = "failed"
+        for pg_num, recs, pg_md in page_results:
+            fp = content_fingerprint(pg_md) if pg_md else None
+            if fp is not None and fp in seen_fingerprints:
+                log.warning(f"[Page {pg_num}/{len(page_urls)}] Same page content detected — skipping {len(recs)} records")
+                _cb("page_duplicate", {"page": pg_num, "skipped_records": len(recs)})
+                continue
+            if fp is not None:
+                seen_fingerprints.add(fp)
+            records.extend(recs)
+            if pg_md:
+                page_markdowns.append((pg_num, pg_md))
+
+        dupes = len(page_urls) - len(page_markdowns)
+        telemetry["extraction_strategy"] = "parallel_all_pages"
+        telemetry["duplicate_pages"] = dupes
+        if dupes:
+            log.warning(f"Multi-page complete: {len(records)} records from {len(page_markdowns)} unique pages ({dupes} duplicates skipped)")
+        else:
+            log.info(f"Multi-page complete: {len(records)} total records from {len(page_urls)} pages")
+
     telemetry["timings"]["extract"] = time.time() - t2
     _cb("extraction_complete", {"records": len(records)})
 
-    # Track page markdowns for merged.txt
-    page_markdowns = [(1, markdown)]
-
-    if run_dir:
-        _save_json(run_dir, "page_1", records)
-
-    # ── Phase 4: Validate ───────────────────────────────────────────
+    # ── Phase 4: Validate ALL merged records ───────────────────────
     t3 = time.time()
     if records:
         _cb("validation_start")
@@ -478,98 +642,7 @@ CRITICAL: Your final output MUST be a valid JSON array of records.""",
             _cb("validation_fallback", {"error": str(e)})
     telemetry["timings"]["validate"] = time.time() - t3
 
-    # ── Phase 5: Multi-page ─────────────────────────────────────────
-    if num_pages > 1 and len(page_urls) <= 1:
-        try:
-            fallback_pag = detect_pagination(url, num_pages)
-            page_urls = fallback_pag.urls
-        except Exception:
-            pass
-
-    if num_pages > 1 and len(page_urls) > 1:
-        _cb("multi_page_start", {"num_pages": num_pages})
-        remaining_urls = page_urls[1:]
-        all_records = list(records)
-
-        def _crawl_and_extract(page_num, page_url):
-            log.info(f"[Page {page_num}/{len(page_urls)}] Crawling: {page_url}")
-            _cb("processing_page", {
-                "page": page_num,
-                "total": len(page_urls),
-                "url": page_url,
-            })
-            try:
-                page_engine = CrawlerEngine()
-                page_crawl = asyncio.run(page_engine.crawl(page_url, callback=callback))
-            except Exception as e:
-                log.warning(f"Page {page_num} crawl error: {e}")
-                _cb("page_failed", {"page": page_num, "error": str(e)})
-                return page_num, [], ""
-
-            if not page_crawl.success:
-                _cb("page_failed", {"page": page_num, "error": page_crawl.error})
-                return page_num, [], ""
-
-            _append_page_to_file(txt_path, page_num, page_crawl.markdown)
-            if run_dir:
-                _save_page_txt(run_dir, page_num, page_crawl.markdown)
-            log.info(f"[Page {page_num}/{len(page_urls)}] Crawled {page_crawl.word_count} words ({len(page_crawl.markdown)} chars)")
-            crawl_info.append({
-                "url": page_url,
-                "layer": page_crawl.layer,
-                "words": page_crawl.word_count,
-                "page": page_num,
-            })
-
-            try:
-                recs = extract_records(
-                    page_crawl.markdown, record_model,
-                    schema.record_description, schema=schema,
-                )
-            except Exception as e:
-                log.warning(f"Page {page_num} extraction error: {e}")
-                recs = []
-
-            if run_dir:
-                _save_json(run_dir, f"page_{page_num}", recs)
-            log.info(f"[Page {page_num}/{len(page_urls)}] Extracted {len(recs)} records")
-            _cb("page_extracted", {
-                "page": page_num,
-                "records": len(recs),
-                "words": page_crawl.word_count,
-                "chars": len(page_crawl.markdown),
-            })
-            return page_num, recs, page_crawl.markdown
-
-        _st_ctx = get_script_run_ctx() if get_script_run_ctx else None
-
-        def _ctx_crawl_and_extract(page_num, page_url):
-            if _st_ctx is not None and add_script_run_ctx is not None:
-                add_script_run_ctx(threading.current_thread(), _st_ctx)
-            return _crawl_and_extract(page_num, page_url)
-
-        with ThreadPoolExecutor(max_workers=3) as pool:
-            futures = [
-                pool.submit(_ctx_crawl_and_extract, i, purl)
-                for i, purl in enumerate(remaining_urls, start=2)
-            ]
-            page_results = []
-            for future in as_completed(futures):
-                try:
-                    page_results.append(future.result())
-                except Exception as e:
-                    log.warning(f"Page processing failed: {e!r}")
-
-        page_results.sort(key=lambda x: x[0])
-        for pg_num, recs, pg_md in page_results:
-            all_records.extend(recs)
-            if pg_md:
-                page_markdowns.append((pg_num, pg_md))
-
-        records = all_records
-        log.info(f"Multi-page complete: {len(all_records)} total records from {len(page_urls)} pages")
-
-    # ── Phase 6: Deduplicate + return ───────────────────────────────
+    # ── Phase 5: Deduplicate + return ───────────────────────────────
 
     # Save merged logs before dedup
     if run_dir:

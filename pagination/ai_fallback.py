@@ -30,8 +30,11 @@ def ai_detect_pagination(url: str, markdown: str, num_pages: int = 3) -> Paginat
         mode=instructor.Mode.GEMINI_JSON,
     )
 
-    # Truncate content — we only need links/navigation area
-    truncated = markdown[:15000]
+    # Include both start and end of page — pagination links are typically at the bottom
+    if len(markdown) <= 15000:
+        truncated = markdown
+    else:
+        truncated = markdown[:8000] + "\n\n[... content truncated ...]\n\n" + markdown[-7000:]
 
     try:
         result = client.create(

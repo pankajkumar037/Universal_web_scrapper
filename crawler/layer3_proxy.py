@@ -1,13 +1,42 @@
 """Layer 3: ScraperAPI residential proxy + html2text conversion."""
 
+import re
 import requests
 import html2text
+from urllib.parse import urlparse, urljoin
 from tenacity import retry, stop_after_attempt, wait_exponential
 from config import settings
 from crawler.base import CrawlerStrategy, CrawlResult
 from utils.logger import get_logger
 
 log = get_logger("layer3")
+
+
+def _extract_links_from_html(html: str, base_url: str) -> dict:
+    """Extract links from raw HTML into Crawl4AI-compatible dict structure."""
+    parsed_base = urlparse(base_url)
+    internal = []
+    external = []
+
+    for match in re.finditer(r'<a\s[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', html, re.IGNORECASE | re.DOTALL):
+        href, text = match.group(1), match.group(2)
+        # Strip HTML tags from link text
+        text = re.sub(r'<[^>]+>', '', text).strip()
+        href = href.strip()
+
+        if href.startswith(('#', 'javascript:', 'mailto:')):
+            continue
+
+        absolute = urljoin(base_url, href)
+        abs_parsed = urlparse(absolute)
+        entry = {"href": absolute, "text": text}
+
+        if abs_parsed.netloc == parsed_base.netloc or not abs_parsed.netloc:
+            internal.append(entry)
+        else:
+            external.append(entry)
+
+    return {"internal": internal, "external": external}
 
 
 class ProxyCrawler(CrawlerStrategy):
@@ -53,7 +82,7 @@ class ProxyCrawler(CrawlerStrategy):
         resp.raise_for_status()
         return resp
 
-    async def crawl(self, url: str) -> CrawlResult:
+    async def crawl(self, url: str, paginated: bool = False) -> CrawlResult:
         log.info(f"Layer 3 (proxy) crawling: {url}")
 
         if not settings.SCRAPERAPI_KEY:
@@ -77,11 +106,14 @@ class ProxyCrawler(CrawlerStrategy):
             converter.body_width = 0
             markdown = converter.handle(resp.text)
 
+            links = _extract_links_from_html(resp.text, url)
+
             return CrawlResult(
                 url=url,
                 markdown=markdown,
                 success=True,
                 layer=self.layer,
+                links=links,
             )
 
         except Exception as e:
