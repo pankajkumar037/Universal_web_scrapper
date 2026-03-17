@@ -1,0 +1,24 @@
+# Crawling
+crawl4ai[all]
+requests
+aiohttp
+html2text
+
+# LLM + Structured Output
+google-genai
+instructor[google-generativeai]
+
+# Agents
+crewai[tools]
+pydantic>=2.0
+
+# UI
+streamlit
+pandas
+
+# Utilities
+python-dotenv
+tenacity
+fuzzywuzzy
+python-Levenshtein
+nest_asyncio

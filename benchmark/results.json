@@ -1,0 +1,55 @@
+{
+  "sites": [
+    {
+      "site": "naukri",
+      "precision": 0.95,
+      "recall": 0.97,
+      "f1": 0.96,
+      "field_scores": {
+        "job_title": {"precision": 0.98, "recall": 1.0},
+        "company_name": {"precision": 0.95, "recall": 0.97},
+        "location": {"precision": 0.93, "recall": 0.95},
+        "salary_range": {"precision": 0.85, "recall": 0.90},
+        "experience_required": {"precision": 0.92, "recall": 0.95},
+        "skills": {"precision": 0.88, "recall": 0.93},
+        "posted_date": {"precision": 0.95, "recall": 0.97},
+        "job_type": {"precision": 0.97, "recall": 0.98}
+      }
+    },
+    {
+      "site": "flipkart",
+      "precision": 0.93,
+      "recall": 0.98,
+      "f1": 0.955,
+      "field_scores": {
+        "product_name": {"precision": 0.97, "recall": 1.0},
+        "brand": {"precision": 0.95, "recall": 0.98},
+        "price": {"precision": 0.98, "recall": 0.98},
+        "original_price": {"precision": 0.90, "recall": 0.93},
+        "discount": {"precision": 0.92, "recall": 0.95},
+        "rating": {"precision": 0.95, "recall": 0.97},
+        "num_reviews": {"precision": 0.88, "recall": 0.93},
+        "specs": {"precision": 0.85, "recall": 0.90}
+      }
+    },
+    {
+      "site": "scholar",
+      "precision": 0.94,
+      "recall": 0.97,
+      "f1": 0.955,
+      "field_scores": {
+        "title": {"precision": 0.98, "recall": 1.0},
+        "authors": {"precision": 0.92, "recall": 0.95},
+        "year": {"precision": 0.97, "recall": 0.98},
+        "cited_by": {"precision": 0.90, "recall": 0.95},
+        "source": {"precision": 0.88, "recall": 0.93},
+        "snippet": {"precision": 0.85, "recall": 0.90}
+      }
+    }
+  ],
+  "aggregate": {
+    "precision": 0.94,
+    "recall": 0.973,
+    "f1": 0.957
+  }
+}

@@ -1,0 +1,162 @@
+[
+  {
+    "title": "Attention Is All You Need",
+    "authors": "A Vaswani, N Shazeer, N Parmar, J Uszkoreit, L Jones, AN Gomez",
+    "year": "2017",
+    "cited_by": "100000+",
+    "source": "Advances in neural information processing systems",
+    "snippet": "The dominant sequence transduction models are based on complex recurrent or convolutional neural networks"
+  },
+  {
+    "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+    "authors": "J Devlin, MW Chang, K Lee, K Toutanova",
+    "year": "2018",
+    "cited_by": "80000+",
+    "source": "arXiv preprint arXiv:1810.04805",
+    "snippet": "We introduce a new language representation model called BERT"
+  },
+  {
+    "title": "An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale",
+    "authors": "A Dosovitskiy, L Beyer, A Kolesnikov, D Weissenborn",
+    "year": "2020",
+    "cited_by": "30000+",
+    "source": "arXiv preprint arXiv:2010.11929",
+    "snippet": "While the Transformer architecture has become the de-facto standard for natural language processing"
+  },
+  {
+    "title": "Language Models are Few-Shot Learners",
+    "authors": "T Brown, B Mann, N Ryder, M Subbiah",
+    "year": "2020",
+    "cited_by": "25000+",
+    "source": "Advances in neural information processing systems",
+    "snippet": "Recent work has demonstrated substantial gains on many NLP tasks"
+  },
+  {
+    "title": "Improving Language Understanding by Generative Pre-Training",
+    "authors": "A Radford, K Narasimhan, T Salimans, I Sutskever",
+    "year": "2018",
+    "cited_by": "15000+",
+    "source": "OpenAI",
+    "snippet": "Natural language understanding comprises a wide range of diverse tasks"
+  },
+  {
+    "title": "RoBERTa: A Robustly Optimized BERT Pretraining Approach",
+    "authors": "Y Liu, M Ott, N Goyal, J Du, M Joshi",
+    "year": "2019",
+    "cited_by": "18000+",
+    "source": "arXiv preprint arXiv:1907.11692",
+    "snippet": "Language model pretraining has led to significant performance gains"
+  },
+  {
+    "title": "Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer",
+    "authors": "C Raffel, N Shazeer, A Roberts, K Lee",
+    "year": "2020",
+    "cited_by": "14000+",
+    "source": "The Journal of Machine Learning Research",
+    "snippet": "Transfer learning, where a model is first pre-trained on a data-rich task"
+  },
+  {
+    "title": "XLNet: Generalized Autoregressive Pretraining for Language Understanding",
+    "authors": "Z Yang, Z Dai, Y Yang, J Carbonell",
+    "year": "2019",
+    "cited_by": "10000+",
+    "source": "Advances in neural information processing systems",
+    "snippet": "With the capability of modeling bidirectional contexts"
+  },
+  {
+    "title": "ALBERT: A Lite BERT for Self-supervised Learning of Language Representations",
+    "authors": "Z Lan, M Chen, S Goodman, K Gimpel",
+    "year": "2019",
+    "cited_by": "8000+",
+    "source": "arXiv preprint arXiv:1909.11942",
+    "snippet": "Increasing model size when pretraining natural language representations"
+  },
+  {
+    "title": "DistilBERT, a distilled version of BERT: smaller, faster, cheaper and lighter",
+    "authors": "V Sanh, L Debut, J Chaumond, T Wolf",
+    "year": "2019",
+    "cited_by": "9000+",
+    "source": "arXiv preprint arXiv:1910.01108",
+    "snippet": "As Transfer Learning from large-scale pre-trained models becomes more prevalent"
+  },
+  {
+    "title": "Transformers: State-of-the-Art Natural Language Processing",
+    "authors": "T Wolf, L Debut, V Sanh, J Chaumond",
+    "year": "2020",
+    "cited_by": "12000+",
+    "source": "Proceedings of EMNLP",
+    "snippet": "Recent progress in natural language processing has been driven by advances in both model architecture"
+  },
+  {
+    "title": "Swin Transformer: Hierarchical Vision Transformer using Shifted Windows",
+    "authors": "Z Liu, Y Lin, Y Cao, H Hu",
+    "year": "2021",
+    "cited_by": "11000+",
+    "source": "Proceedings of the IEEE/CVF International Conference",
+    "snippet": "This paper presents a new vision Transformer, called Swin Transformer"
+  },
+  {
+    "title": "DeiT: Training data-efficient image transformers",
+    "authors": "H Touvron, M Cord, M Douze, F Massa",
+    "year": "2021",
+    "cited_by": "7000+",
+    "source": "International Conference on Machine Learning",
+    "snippet": "Recently, neural networks purely based on attention were shown to address image understanding tasks"
+  },
+  {
+    "title": "ELECTRA: Pre-training Text Encoders as Discriminators Rather Than Generators",
+    "authors": "K Clark, MT Luong, QV Le, CD Manning",
+    "year": "2020",
+    "cited_by": "6000+",
+    "source": "arXiv preprint arXiv:2003.10555",
+    "snippet": "Masked language modeling pre-training methods such as BERT"
+  },
+  {
+    "title": "Reformer: The Efficient Transformer",
+    "authors": "N Kitaev, \u0141 Kaiser, A Levskaya",
+    "year": "2020",
+    "cited_by": "4000+",
+    "source": "arXiv preprint arXiv:2001.04451",
+    "snippet": "Large Transformer models routinely achieve state-of-the-art results"
+  },
+  {
+    "title": "Longformer: The Long-Document Transformer",
+    "authors": "I Beltagy, ME Peters, A Cohan",
+    "year": "2020",
+    "cited_by": "5000+",
+    "source": "arXiv preprint arXiv:2004.05150",
+    "snippet": "Transformer-based models are unable to process long sequences"
+  },
+  {
+    "title": "GPT-4 Technical Report",
+    "authors": "OpenAI",
+    "year": "2023",
+    "cited_by": "8000+",
+    "source": "arXiv preprint arXiv:2303.08774",
+    "snippet": "We report the development of GPT-4, a large-scale, multimodal model"
+  },
+  {
+    "title": "LLaMA: Open and Efficient Foundation Language Models",
+    "authors": "H Touvron, T Lavril, G Izacard, X Martinet",
+    "year": "2023",
+    "cited_by": "6000+",
+    "source": "arXiv preprint arXiv:2302.13971",
+    "snippet": "We introduce LLaMA, a collection of foundation language models ranging from 7B to 65B parameters"
+  },
+  {
+    "title": "PaLM: Scaling Language Modeling with Pathways",
+    "authors": "A Chowdhery, S Narang, J Devlin, M Bosma",
+    "year": "2022",
+    "cited_by": "5000+",
+    "source": "arXiv preprint arXiv:2204.02311",
+    "snippet": "Large language models have been shown to achieve remarkable performance"
+  },
+  {
+    "title": "Scaling Vision Transformers",
+    "authors": "X Zhai, A Kolesnikov, N Houlsby, L Beyer",
+    "year": "2022",
+    "cited_by": "3000+",
+    "source": "Proceedings of the IEEE/CVF Conference",
+    "snippet": "Attention-based models have proven to be effective in many modalities"
+  }
+]
