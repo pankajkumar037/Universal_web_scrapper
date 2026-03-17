@@ -30,7 +30,7 @@ class JinaCrawler(CrawlerStrategy):
         resp.raise_for_status()
         return resp
 
-    async def crawl(self, url: str) -> CrawlResult:
+    async def crawl(self, url: str, paginated: bool = False) -> CrawlResult:
         log.info(f"Layer 4 (Jina) crawling: {url}")
         try:
             resp = self._fetch_with_retry(url)

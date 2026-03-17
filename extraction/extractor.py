@@ -15,14 +15,10 @@ log = get_logger("extractor")
 
 def deduplicate_records(records: list[dict]) -> list[dict]:
     """Remove exact-duplicate records."""
-    if len(records) <= 1:
-        return records
-
     unique = []
     for rec in records:
         if rec not in unique:
             unique.append(rec)
-
     if len(unique) < len(records):
         log.info(f"Deduplication: {len(records)} -> {len(unique)}")
     return unique
@@ -156,6 +152,19 @@ def _extract_chunks_parallel(
     return all_records, failed_chunks
 
 
+def _build_fixed_chunks(text: str, chunk_size: int = 100000, overlap: int = 2000) -> list[tuple[int, str]]:
+    """Split text into fixed-size chunks with overlap."""
+    chunks = []
+    start = 0
+    idx = 0
+    while start < len(text):
+        end = min(start + chunk_size, len(text))
+        chunks.append((idx, text[start:end]))
+        idx += 1
+        start += chunk_size - overlap  # advance by chunk_size minus overlap
+    return chunks
+
+
 def extract_records(
     markdown: str,
     record_model: type,
@@ -187,42 +196,12 @@ def extract_records(
         log.info(f"Extracted {len(records)} records")
         return records
 
-    # Step 1: Detect boundaries
-    _cb("boundary_detection")
-    try:
-        boundaries = _detect_boundaries(markdown, record_description)
-        log.info(f"Found {len(boundaries.start_lines)} boundaries, estimated {boundaries.estimated_count} records")
-        _cb("boundary_detected", {"boundaries": len(boundaries.start_lines), "estimated": boundaries.estimated_count})
-    except Exception as e:
-        log.warning(f"Boundary detection failed: {e}, falling back to batch")
-        _cb("boundary_fallback", {"error": str(e)})
-        try:
-            raw = _extract_chunk(markdown, record_model, record_description, temperature, schema=schema)
-            return post_process_records(raw, schema=schema)
-        except Exception as e2:
-            log.error(f"Batch fallback also failed: {e2}")
-            return []
+    # Split into fixed-size chunks with overlap and extract in parallel
+    chunks = _build_fixed_chunks(markdown)
+    log.info(f"Split into {len(chunks)} chunks (~100k each, 2k overlap)")
+    _cb("chunked_extraction", {"chunks": len(chunks), "chars": len(markdown)})
 
-    # Step 2: Build chunks from boundaries
-    lines = markdown.split("\n")
-    starts = sorted(boundaries.start_lines)
-    chunks = []
-    for i, start in enumerate(starts):
-        end = starts[i + 1] if i + 1 < len(starts) else len(lines)
-        chunk_text = "\n".join(lines[max(0, start):min(end, len(lines))])
-        if chunk_text.strip():
-            chunks.append((i, chunk_text))
-
-    if not chunks:
-        log.warning("No valid chunks found, falling back to batch")
-        try:
-            raw = _extract_chunk(markdown, record_model, record_description, temperature, schema=schema)
-            return post_process_records(raw, schema=schema)
-        except Exception as e:
-            log.error(f"Batch fallback failed: {e}")
-            return []
-
-    # Step 3: Extract chunks in parallel
+    # Extract chunks in parallel
     all_records, failed_chunks = _extract_chunks_parallel(
         chunks, record_model, record_description, temperature, schema,
         callback=callback, max_workers=3,

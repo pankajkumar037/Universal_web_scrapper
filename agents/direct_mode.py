@@ -8,10 +8,12 @@ from extraction.prompt_refiner import refine_prompt
 from extraction.schema_builder import build_dynamic_model
 from extraction.extractor import extract_records
 from crawler.engine import CrawlerEngine
+from models import PaginationResult
 from pagination.heuristic import detect_pagination
 from pagination.ai_fallback import ai_detect_pagination
 from pagination.rate_limiter import RateLimiter
 from utils.logger import get_logger
+from utils.fingerprint import content_fingerprint
 
 log = get_logger("direct_mode")
 
@@ -86,15 +88,19 @@ def run_direct_pipeline(
 
     # Step 4: Detect pagination
     _cb("detecting_pagination", {"num_pages": num_pages})
-    pagination = detect_pagination(url, num_pages, markdown=first_crawl.markdown)
+    pagination = detect_pagination(url, num_pages, markdown=first_crawl.markdown, links=first_crawl.links)
 
     if num_pages > 1 and "speculative" in pagination.pattern:
         try:
             ai_pagination = ai_detect_pagination(url, first_crawl.markdown, num_pages)
             if ai_pagination.urls and len(ai_pagination.urls) > 1:
                 pagination = ai_pagination
+            else:
+                log.info("AI found no pagination; downgrading speculative to single page")
+                pagination = PaginationResult(urls=[url], pattern="single (ai_verified)", method="ai_fallback")
         except Exception as e:
-            log.warning(f"AI pagination fallback failed: {e}")
+            log.warning(f"AI pagination fallback failed: {e}; downgrading to single page")
+            pagination = PaginationResult(urls=[url], pattern="single (ai_error)", method="ai_fallback")
 
     result["pagination"] = pagination.model_dump()
     _cb("pagination_detected", {"pattern": pagination.pattern, "pages": len(pagination.urls)})
@@ -102,6 +108,7 @@ def run_direct_pipeline(
     # Step 5: Crawl all pages and extract
     rate_limiter = RateLimiter(callback=callback)
     all_records = []
+    seen_fingerprints: set[str] = set()
 
     for i, page_url in enumerate(pagination.urls):
         _cb("processing_page", {"page": i + 1, "total": len(pagination.urls), "url": page_url})
@@ -128,6 +135,14 @@ def run_direct_pipeline(
                 "layer": page_crawl.layer,
                 "words": page_crawl.word_count,
             })
+
+        # Detect if this page is the same as one we already crawled
+        fp = content_fingerprint(page_markdown)
+        if fp in seen_fingerprints:
+            log.warning(f"Page {i + 1}: same content as a previous page — stopping pagination")
+            _cb("page_duplicate", {"page": i + 1})
+            break
+        seen_fingerprints.add(fp)
 
         # Extract records
         _cb("extracting", {"page": i + 1})
