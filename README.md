@@ -25,7 +25,7 @@ AI-powered web scraper with a Streamlit UI that uses Google Gemini to intelligen
 
 ```bash
 git clone https://github.com/pankajkumar037/Universal_web_scrapper.git
-cd web_scrapper
+cd Universal_web_scrapper
 pip install -r requirements.txt
 playwright install
 ```
