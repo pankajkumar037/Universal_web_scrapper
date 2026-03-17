@@ -98,6 +98,8 @@ web_scrapper/
 │   └── logger.py           # Logging setup
 ├── requirements.txt
 ├── .env.example            # Environment variable template
+├── ARCHITECTURE.pdf        # Detailed architecture documentation
+├── PROJECT_DOCUMENTATION.pdf # Complete project documentation
 ```
 
 ## How It Works
@@ -111,6 +113,11 @@ Sidebar input → Crawler (4 layers) → Schema inference → Extraction (chunke
 3. **Extract** — HTML is chunked and processed in parallel; Instructor enforces the schema.
 4. **Validate** — Results are scored for completeness and duplicates.
 5. **Present** — Data appears in a table with export, chat, quality, and insight panels.
+
+## Documentation
+
+- **ARCHITECTURE.pdf** — Component-by-component architecture breakdown with data flow diagrams
+- **PROJECT_DOCUMENTATION.pdf** — Full project guide covering setup, usage, internals, and design decisions
 
 ## License
 MIT License
