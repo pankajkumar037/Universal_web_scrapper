@@ -2,9 +2,15 @@
 
 AI-powered web scraper with a Streamlit UI that uses Google Gemini to intelligently extract structured data from any website.
 
+
 ## Extraction Logs
 
 [Logs of extracted data](https://drive.google.com/drive/folders/1Gl2aB0rZbtGIm5A1KX-yRBsdbtnf0Sxy?usp=drive_link)
+=======
+## Logs of extracted data
+(https://drive.google.com/drive/folders/1Gl2aB0rZbtGIm5A1KX-yRBsdbtnf0Sxy?usp=drive_link)
+
+
 
 ## Features
 
