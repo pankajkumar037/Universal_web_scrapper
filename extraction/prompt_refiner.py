@@ -35,11 +35,11 @@ Example: For "get job listings info" you might produce:
 - job_title (str): Title of the job position
 - company_name (str): Name of the hiring company
 - location (str): Job location or "Remote"
-- salary_range (str): Salary information if available
+- salary_info (str): Salary or pay range if shown on the card (e.g., "$50,000 - $80,000 a year", "₹6L - ₹12L a year"); use NOT_FOUND if not displayed
 - experience_required (str): Required years or level of experience
-- skills (list[str]): Key skills mentioned in the listing
-- posted_date (str): When the job was posted
-- job_type (str): Full-time, Part-time, Contract, etc.
+- skills (list[str]): Skills listed IN THE JOB CARD — note: often absent on search result listing pages; use NOT_FOUND if not shown
+- posted_date (str): When the job was posted — look for patterns like "Posted 2 days ago", "Just posted", "Active today", "1 hour ago", "30+ days ago"
+- job_type (str): Full-time, Part-time, Contract, Internship, etc.
 """
 
 

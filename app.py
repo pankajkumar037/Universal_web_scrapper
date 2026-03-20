@@ -40,28 +40,6 @@ if "selected_schema" not in st.session_state:
     st.session_state.selected_schema = None
 
 
-def _run_standard_pipeline(config):
-    """Standard mode: URL + description -> full pipeline."""
-    progress = ProgressFeed()
-
-    try:
-        from agents.crew import run_crew_pipeline
-
-        results = run_crew_pipeline(
-            url=config["url"],
-            description=config["description"],
-            num_pages=config["num_pages"],
-            callback=progress.get_callback(),
-        )
-        st.session_state.results = results
-
-    except Exception as e:
-        progress.update("error", {"message": str(e)})
-        st.error(f"Pipeline error: {e}")
-        import traceback
-        st.code(traceback.format_exc())
-
-
 def _run_auto_detect(config):
     """Auto-detect mode: URL only -> detect data types -> user picks -> extract."""
     from agents.crew import run_crawl_and_plan
@@ -201,20 +179,11 @@ def _display_results(results):
     schema = results.get("schema", {})
     crawl_info = results.get("crawl_info", [])
 
-    if telemetry:
-        render_transparency_panel(
-            telemetry=telemetry,
-            schema=schema,
-            crawl_info=crawl_info,
-        )
-    else:
-        # Fallback for backward compatibility if no telemetry
-        from ui.strategy_panel import render_strategy_panel
-        render_strategy_panel(
-            crawl_info=crawl_info,
-            risk=crawl_info[0].get("risk", "") if crawl_info else "",
-            pagination=results.get("pagination"),
-        )
+    render_transparency_panel(
+        telemetry=telemetry,
+        schema=schema,
+        crawl_info=crawl_info,
+    )
 
     st.divider()
 

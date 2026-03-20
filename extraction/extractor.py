@@ -3,7 +3,7 @@
 import google.generativeai as genai
 import instructor
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from pydantic import BaseModel, Field, create_model
+from pydantic import BaseModel, create_model
 from tenacity import retry, stop_after_attempt, wait_exponential
 from config import settings
 from extraction.schema_builder import build_list_model, post_process_records
@@ -24,43 +24,12 @@ def deduplicate_records(records: list[dict]) -> list[dict]:
     return unique
 
 
-# Boundary detection model
-class RecordBoundaries(BaseModel):
-    """Line numbers where each record starts in the content."""
-    start_lines: list[int] = Field(description="Line numbers where each record/item starts")
-    estimated_count: int = Field(description="Estimated total number of records on the page")
-
-
 def _get_client():
     genai.configure(api_key=settings.GEMINI_API_KEY)
     return instructor.from_gemini(
         client=genai.GenerativeModel(model_name=f"models/{settings.GEMINI_MODEL}"),
         mode=instructor.Mode.GEMINI_JSON,
     )
-
-
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(min=1, max=10),
-    reraise=True,
-)
-def _detect_boundaries(content: str, record_description: str) -> RecordBoundaries:
-    """Ask Gemini where each record starts in the content."""
-    client = _get_client()
-    lines = content.split("\n")
-    numbered = "\n".join(f"{i}: {line}" for i, line in enumerate(lines))
-    result = client.create(
-        response_model=RecordBoundaries,
-        messages=[{"role": "user", "content": f"""Analyze this content and identify where each record/item starts.
-A record is: {record_description}
-
-Content with line numbers:
-{numbered}
-
-Return the line numbers where each new record begins and your estimated total count."""}],
-        generation_config={"temperature": settings.GEMINI_TEMP_STRICT},
-    )
-    return result
 
 
 @retry(

@@ -22,6 +22,7 @@ tenacity
 fuzzywuzzy
 python-Levenshtein
 nest_asyncio
+tavily-python
 
 # PDF
 reportlab

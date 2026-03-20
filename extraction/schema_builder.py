@@ -6,20 +6,12 @@ so we use str with default="NOT_FOUND" for all fields, then post-process to None
 
 import json
 import re
+from typing import Any
 from pydantic import BaseModel, Field, create_model
 from models import RefinedSchema
 from utils.logger import get_logger
 
 log = get_logger("schema_builder")
-
-# Map string type names to actual defaults
-TYPE_DEFAULTS = {
-    "str": ("NOT_FOUND", str),
-    "int": ("NOT_FOUND", str),  # Keep as str for Gemini compat, parse later
-    "float": ("NOT_FOUND", str),
-    "list[str]": ("NOT_FOUND", str),  # Will be parsed from string
-}
-
 
 def build_dynamic_model(schema: RefinedSchema) -> type[BaseModel]:
     """Build a Pydantic model dynamically from a RefinedSchema.
@@ -29,8 +21,10 @@ def build_dynamic_model(schema: RefinedSchema) -> type[BaseModel]:
     """
     field_definitions = {}
     for field_spec in schema.fields:
+        # Use Any for list fields so Gemini can return either a JSON array or a string
+        py_type = Any if field_spec.field_type == "list[str]" else str
         field_definitions[field_spec.name] = (
-            str,
+            py_type,
             Field(default="NOT_FOUND", description=field_spec.description),
         )
 

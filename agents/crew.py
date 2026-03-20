@@ -15,9 +15,7 @@ except ImportError:
     add_script_run_ctx = None
     get_script_run_ctx = None
 
-from crewai import Agent, Task, Crew
 from crewai.tools import BaseTool
-from pydantic import BaseModel, Field
 
 from config import settings
 from crawler.engine import CrawlerEngine
@@ -36,16 +34,11 @@ OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "output")
 RUN_LOGS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "output_logs")
 
 
-# --- Validation Tool for the Validator Agent ---
-
-class ValidateInput(BaseModel):
-    records_json: str = Field(description="JSON string of extracted records to validate")
-
+# --- Validation Tool ---
 
 class ValidateTool(BaseTool):
     name: str = "ValidateRecords"
     description: str = "Validate extracted records for quality: checks for None/empty fields, duplicate records, and type consistency. Returns a validation report."
-    args_schema: type[BaseModel] = ValidateInput
 
     def _run(self, records_json: str) -> str:
         try:
@@ -148,95 +141,6 @@ def _save_json(run_dir: str, filename: str, data: list[dict]):
     path = os.path.join(run_dir, f"{filename}.json")
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, default=str)
-
-
-# --- Crew output parsing ---
-
-def _parse_crew_output(raw: str) -> dict:
-    """Parse crew output robustly, trying multiple strategies."""
-    try:
-        output = json.loads(raw)
-        if isinstance(output, dict):
-            return output
-        if isinstance(output, list):
-            return {"records": output}
-    except (json.JSONDecodeError, TypeError):
-        pass
-
-    bracket_depth = 0
-    start_idx = None
-    for i, ch in enumerate(raw):
-        if ch == '[':
-            if bracket_depth == 0:
-                start_idx = i
-            bracket_depth += 1
-        elif ch == ']':
-            bracket_depth -= 1
-            if bracket_depth == 0 and start_idx is not None:
-                candidate = raw[start_idx:i + 1]
-                try:
-                    records = json.loads(candidate)
-                    if isinstance(records, list) and len(records) > 0:
-                        return {"records": records}
-                except (json.JSONDecodeError, TypeError):
-                    pass
-                start_idx = None
-
-    brace_depth = 0
-    start_idx = None
-    for i, ch in enumerate(raw):
-        if ch == '{':
-            if brace_depth == 0:
-                start_idx = i
-            brace_depth += 1
-        elif ch == '}':
-            brace_depth -= 1
-            if brace_depth == 0 and start_idx is not None:
-                candidate = raw[start_idx:i + 1]
-                try:
-                    obj = json.loads(candidate)
-                    if isinstance(obj, dict) and "records" in obj:
-                        return obj
-                except (json.JSONDecodeError, TypeError):
-                    pass
-                start_idx = None
-
-    code_block_match = re.search(r'```(?:json)?\s*(\[[\s\S]*?\])\s*```', raw)
-    if code_block_match:
-        try:
-            records = json.loads(code_block_match.group(1))
-            if isinstance(records, list):
-                return {"records": records}
-        except (json.JSONDecodeError, TypeError):
-            pass
-
-    return {"raw_output": raw, "records": []}
-
-
-def _run_mini_crew(agent: Agent, task: Task, timeout: int = 120) -> str:
-    """Run a single-agent crew with timeout. Returns raw output string."""
-    crew = Crew(agents=[agent], tasks=[task], verbose=False)
-
-    result_container = [None]
-    error_container = [None]
-
-    def _run():
-        try:
-            result_container[0] = crew.kickoff()
-        except Exception as e:
-            error_container[0] = e
-
-    t = threading.Thread(target=_run)
-    t.start()
-    t.join(timeout=timeout)
-
-    if t.is_alive():
-        raise TimeoutError(f"Mini crew timed out after {timeout}s")
-
-    if error_container[0]:
-        raise error_container[0]
-
-    return str(result_container[0])
 
 
 def _new_telemetry() -> dict:
@@ -358,19 +262,21 @@ def run_crawl_and_plan(
 
     telemetry["fields_inferred"] = [f.name for f in schema.fields]
 
-    # AI pagination fallback if heuristic was speculative
-    if pagination_result and num_pages > 1 and "speculative" in pagination_result.pattern:
+    # AI pagination: always run for multi-page — passes crawl4ai links + full markdown
+    if num_pages > 1:
         try:
-            ai_pag = ai_detect_pagination(url, markdown, num_pages)
+            ai_pag = ai_detect_pagination(
+                url=url,
+                markdown=markdown,
+                num_pages=num_pages,
+                links=crawl_result.links,
+                heuristic_pattern=pagination_result.pattern if pagination_result else None,
+            )
             if len(ai_pag.urls) > 1:
                 pagination_result = ai_pag
-            else:
-                # AI found no real pagination — downgrade to single page
-                log.info("AI found no pagination; downgrading speculative to single page")
-                pagination_result = PaginationResult(urls=[url], pattern="single (ai_verified)", method="ai_fallback")
+            # else: keep heuristic result (structured_links / markdown_links / site-specific)
         except Exception as e:
-            log.warning(f"AI pagination fallback failed: {e}; downgrading to single page")
-            pagination_result = PaginationResult(urls=[url], pattern="single (ai_error)", method="ai_fallback")
+            log.warning(f"AI pagination detection failed: {e}; keeping heuristic result")
 
     page_urls = pagination_result.urls if pagination_result else [url]
     telemetry["pagination_method"] = pagination_result.method if pagination_result else "none"
@@ -603,42 +509,20 @@ def run_extract_and_validate(
     telemetry["timings"]["extract"] = time.time() - t2
     _cb("extraction_complete", {"records": len(records)})
 
-    # ── Phase 4: Validate ALL merged records ───────────────────────
+    # ── Phase 4: Validate ALL merged records (report only, records unchanged) ──
     t3 = time.time()
     if records:
         _cb("validation_start")
-        validator = Agent(
-            role="Quality Validator",
-            goal="Validate extracted data for completeness, accuracy, and consistency. Use the ValidateRecords tool to check the data, then return the final cleaned records as a JSON array.",
-            backstory="You are a QA specialist who ensures data quality by checking for missing fields, inconsistencies, and extraction errors. Always use your ValidateRecords tool and return the final records as valid JSON.",
-            tools=[ValidateTool()],
-            llm=f"gemini/{settings.GEMINI_MODEL}",
-            verbose=False,
-        )
-
-        records_str = json.dumps(records, indent=2)
-        validate_task = Task(
-            description=f"""Validate the extracted data using your ValidateRecords tool:
-1. Pass the following JSON array to the ValidateRecords tool as records_json.
-2. Review the validation report.
-3. Return the final records as a valid JSON array.
-
-Records to validate:
-{records_str}
-
-CRITICAL: Your final output MUST be a valid JSON array of records.""",
-            expected_output="A valid JSON array of the final cleaned records.",
-            agent=validator,
-        )
-
         try:
-            validate_raw = _run_mini_crew(validator, validate_task, timeout=90)
-            validated = _parse_crew_output(validate_raw)
-            if validated.get("records") and len(validated["records"]) > 0:
-                records = validated["records"]
+            report_json = ValidateTool()._run(json.dumps(records))
+            report = json.loads(report_json)
+            for issue in report.get("issues", []):
+                log.warning(issue)
+            log.info(f"Validation report: {report.get('total_records')} records, "
+                     f"{report.get('duplicate_count', 0)} duplicates")
             _cb("validation_complete")
         except Exception as e:
-            log.warning(f"Validator agent failed: {e}, using unvalidated records")
+            log.warning(f"Validation report failed: {e}")
             _cb("validation_fallback", {"error": str(e)})
     telemetry["timings"]["validate"] = time.time() - t3
 

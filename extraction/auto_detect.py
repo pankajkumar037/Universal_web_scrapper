@@ -47,7 +47,12 @@ For each distinct data type found:
    - clear description
 
 Return 1-3 data types, ranked by how prominent they are on the page.
-Focus on the MAIN content, not navigation, headers, or footers."""
+Focus on the MAIN content, not navigation, headers, or footers.
+
+For job listing fields, use specific descriptions:
+- posted_date: look for patterns like "Posted X days ago", "Just posted", "Active today", "1 hour ago"
+- salary_info: pay range if shown on card (e.g., "$50k - $80k"); NOT_FOUND if not visible
+- skills: only if explicitly listed in the card — often absent on search result pages"""
 
 
 def _detect_with_gemini(markdown: str) -> DetectedContent:
