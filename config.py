@@ -10,8 +10,9 @@ class Settings:
     # API Keys
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     SCRAPERAPI_KEY: str = os.getenv("SCRAPERAPI_KEY", "")
+    TAVILY_API_KEY: str = os.getenv("TAVILY_API_KEY", "")
     # Gemini
-    GEMINI_MODEL: str = "gemini-3-flash-preview"
+    GEMINI_MODEL: str = "gemini-2.5-flash-lite"
     GEMINI_TEMP_STRICT: float = 0.0
     GEMINI_MAX_TOKENS: int = 8192
 

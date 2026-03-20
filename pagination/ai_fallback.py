@@ -18,7 +18,13 @@ class PaginationAnalysis(BaseModel):
     pattern_description: str = Field(default="", description="Description of the pagination pattern")
 
 
-def ai_detect_pagination(url: str, markdown: str, num_pages: int = 3) -> PaginationResult:
+def ai_detect_pagination(
+    url: str,
+    markdown: str,
+    num_pages: int = 3,
+    links: dict | None = None,
+    heuristic_pattern: str | None = None,
+) -> PaginationResult:
     """Use Gemini to detect pagination from page content."""
 
     if not markdown:
@@ -30,28 +36,44 @@ def ai_detect_pagination(url: str, markdown: str, num_pages: int = 3) -> Paginat
         mode=instructor.Mode.GEMINI_JSON,
     )
 
-    # Include both start and end of page — pagination links are typically at the bottom
-    if len(markdown) <= 15000:
-        truncated = markdown
-    else:
-        truncated = markdown[:8000] + "\n\n[... content truncated ...]\n\n" + markdown[-7000:]
+    # Build links section from crawl4ai structured links
+    links_section = ""
+    if links:
+        internal = links.get("internal", [])
+        pagination_keywords = {"next", "page", "→", ">", "»", "load more", "show more"}
+        candidates = [
+            f"  {lnk.get('href','')}  [{lnk.get('text','')}]"
+            for lnk in internal
+            if any(kw in (lnk.get("text", "") + lnk.get("href", "")).lower() for kw in pagination_keywords)
+        ]
+        if candidates:
+            links_section = "\n\nCrawl4AI discovered these pagination-candidate links:\n" + "\n".join(candidates[:30])
+
+    heuristic_section = ""
+    if heuristic_pattern:
+        heuristic_section = f"\n\nHeuristic code detected pattern: {heuristic_pattern!r} (may be speculative)"
+
+    prompt = f"""You are analyzing a web page to find its pagination mechanism.
+
+URL: {url}
+{heuristic_section}
+{links_section}
+
+Full page content:
+{markdown}
+
+Task:
+1. Identify if this page has pagination (Next button, page numbers, load-more, offset params, etc.)
+2. If yes, return the URLs for pages 2 through {num_pages}
+3. If no real pagination found, set has_pagination=false
+
+Output ONLY valid JSON matching this schema:
+{{"has_pagination": bool, "next_page_urls": [list of URL strings], "pattern_description": "short description"}}"""
 
     try:
         result = client.create(
             response_model=PaginationAnalysis,
-            messages=[{"role": "user", "content": f"""Analyze this webpage content and find pagination.
-URL: {url}
-
-Look for:
-- "Next page" links
-- Page number links (1, 2, 3...)
-- "Load more" buttons
-- Any navigation to additional pages of results
-
-Content:
-{truncated}
-
-Return the full URLs for the next {num_pages - 1} pages if pagination exists."""}],
+            messages=[{"role": "user", "content": prompt}],
             generation_config={"temperature": settings.GEMINI_TEMP_STRICT},
         )
 
